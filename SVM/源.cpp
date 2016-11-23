@@ -7,50 +7,76 @@
 #include <string>
 #include <algorithm>
 #include <io.h>
+#include <Eigen/Dense>
 using namespace std;
+using namespace Eigen;
 vector<vector<float>>dataMat;
 vector<int>labelMat;
-vector<vector<float>>dataMat2;
-vector<int>labelMat2;
-vector<float> kernelTrans(vector<vector<float>>X, vector<float>A, string kTup, float kTup_lev);
+VectorXf kernelTrans(MatrixXf X, VectorXf A, string kTup, float kTup_lev)
+{
+
+	int m = X.rows();
+	int n = X.cols();
+	VectorXf K(m,1);
+	if (kTup == "lin")
+	{
+		K = X * (A.transpose());
+	}
+	else if (kTup == "rbf")
+	{
+		for (int j = 0; j < m; j++)
+		{
+			VectorXf deltaRow = X.row(j) - A.transpose();
+			K[j] = deltaRow.dot(deltaRow);
+		}
+		float ktup_temp = (-1 * kTup_lev *kTup_lev);
+		for (unsigned int j = 0; j < K.size(); j++)
+		{
+			K[j] = exp(K[j] / ktup_temp);
+		}
+	}
+	else
+	{
+		cout << "raise NameError('Houston we have a problem that kernal is not recognized')" << endl;
+	}
+	return K;
+}
 class optStruct
 {
 public:
-	vector<vector<float>>X;
-	vector<int>labelMat;
+	MatrixXf X;
+	VectorXf labelMat;
 	float C;
 	float tol;
 	int m;
-	vector<float>alphas;
+	VectorXf alphas;
 	float b;
-	vector<vector<float>> eCache;
+	MatrixXf eCache;
 	string kTup;
 	float kTup_lev;
-	vector<vector<float>>K;
-	optStruct(vector<vector<float>>dataMatIn, vector<int>classlabel,float c,float toler,string tup,float tup_level=1)
+	MatrixXf K;
+	optStruct(MatrixXf dataMatIn, VectorXf classlabel, float c, float toler, string tup, float tup_level = 1)
 	{
 		X = dataMatIn;
 		labelMat = classlabel;
 		C = c;
 		tol = toler;
-		m = dataMatIn.size();
-		alphas = vector<float>(m,0);
+		m = dataMatIn.rows();
+		alphas = VectorXf::Zero(m);
 		b = 0;
 		kTup = tup;
 		kTup_lev = tup_level;
-		K = *new vector<vector <float> >(m, vector<float>(m, 0));
+		K = MatrixXf::Zero(m,m);
 		for (int i = 0; i < m; i++)
 		{
-			vector<float> temp_k = kernelTrans(X, X[i], kTup, kTup_lev);
-			for (unsigned int j = 0; j < temp_k.size(); j++)
-				K[j][i] = temp_k[j];
+			VectorXf temp_k = kernelTrans(X, X.row(i), kTup, kTup_lev);
+			
+			K.col(i) = temp_k.transpose();
 		}
-		//vector<vector <float> > ivec(2, vector<float>(m, 0));
-		eCache =* new vector<vector <float> >(2, vector<float>(m, 0));
+		eCache = MatrixXf::Zero(2, m);
 	}
-
-	
 };
+
 void loadDataSet(string filename)
 {
 	ifstream in;
@@ -79,88 +105,33 @@ void loadDataSet(string filename)
 		labelMat.push_back(int(temp_mat));
 		in.get();
 	}
-	in.close();
+	in.close();	
 }
-vector<float> multiply_vv(vector<float>alphas, vector<int>labelMat)
+float calcEk(optStruct oS, int k)
 {
-	vector<float> res ;
-	for (unsigned int i = 0; i < alphas.size(); i++)
+	float fXk = (oS.alphas.cwiseProduct(oS.labelMat)).dot(oS.K.col(k)) + oS.b;
+	return fXk - float(oS.labelMat[k]);
+}
+vector<int> nonzero(VectorXf vec)
+{
+	vector<int>res;
+	for (int i = 0; i < vec.size();  i++)
 	{
-		res.push_back(alphas[i] * labelMat[i]);
+		if (vec[i] != 0)
+			res.push_back(i);
 	}
 	return res;
 }
-vector<float> multiply_vv(vector<float>alphas, vector<float>labelMat)
+vector<int> nonzero(VectorXf vec,float l1,float l2)
 {
-	vector<float> res;
-	for (unsigned int i = 0; i < alphas.size(); i++)
+	vector<int>res;
+	for (int i = 0; i < vec.size(); i++)
 	{
-		res.push_back(alphas[i] * labelMat[i]);
+		if (vec[i] <l2&&vec[i]>l1)
+			res.push_back(i);
 	}
 	return res;
 }
-
-vector<float> multiply_mv(vector<vector<float>>mat, vector<float>vec)
-{
-	vector<float> res;
-	for (unsigned int i = 0; i < mat.size(); i++)
-	{
-		float temp = 0;
-		for (unsigned int j = 0; j < mat[0].size(); j++)
-		{
-			temp += mat[i][j] * vec[j];
-		}
-		res.push_back(temp);
-	}
-	return res;
-}
-vector<float> add_vv(vector<float>v1, vector<float>v2,int bei=1)
-{
-	vector<float> res;
-	for (unsigned int i = 0; i < v1.size(); i++)
-	{
-		res.push_back(v1[i] + v2[i]*bei);
-	}
-	return res;
-}
-vector<float> add_vv(vector<float>v1, vector<float>v2, float bei = 1)
-{
-	vector<float> res;
-	for (unsigned int i = 0; i < v1.size(); i++)
-	{
-		res.push_back(v1[i] + v2[i] * bei);
-	}
-	return res;
-}
-vector<float> sub_vv(vector<float>v1, vector<float>v2, float bei = 1)
-{
-	vector<float> res;
-	for (unsigned int i = 0; i < v1.size(); i++)
-	{
-		res.push_back(v1[i] - v2[i] * bei);
-	}
-	return res;
-}
-float mul_vv(vector<float>vec1, vector<float>vec2)
-{
-	float res=0;
-	for (unsigned int i = 0; i < vec1.size(); i++)
-	{
-		res+=vec1[i] * vec2[i];
-	}
-	return res;
-}
-int selectJrand(int i, int m)
-{
-	int j = i;
-	srand((unsigned)time(NULL));
-	while (j == i)
-	{
-		j =  rand() % m;
-	}
-	return j;
-}
-
 float clipAlpha(float aj, float H, float L)
 {
 	if (aj > H)
@@ -169,119 +140,24 @@ float clipAlpha(float aj, float H, float L)
 		aj = L;
 	return aj;
 }
-
-void smoSimple(vector<vector<float>>dataMatIn, vector<int>classLabels, float C, float toler, float maxIter, float &b, vector<float> &alphas)
+int selectJrand(int i, int m)
 {
-	int m = dataMatIn.size();
-	int n = dataMatIn[0].size();
-	int iter = 0;
-	while (iter < maxIter)
-	{	
-		int alphaPairsChanged = 0;
-		for (int i = 0; i < m; i++)
-		{
-			float fxi = float(mul_vv(multiply_vv(alphas, labelMat), multiply_mv(dataMatIn, dataMatIn[i])))+b;
-			float Ei = fxi - float(labelMat[i]);
-			if (((labelMat[i] * Ei<-toler) && (alphas[i]<C)) || ((labelMat[i] * Ei>toler) && (alphas[i]>0)))
-			{
-				int j = selectJrand(i, m);
-				float fxj = float(mul_vv(multiply_vv(alphas, labelMat), multiply_mv(dataMatIn, dataMatIn[j]))) + b;
-				float Ej = fxj - float(labelMat[j]);
-				float alphaIold = alphas[i];
-				float alphaJold = alphas[j];
-				float L, H;
-				if (labelMat[i] != labelMat[j])
-				{
-					L = max(float(0.0), alphas[j] - alphas[i]);
-					H = min(C, C+alphas[j] - alphas[i]);
-				}
-				else
-				{
-					L = max(float(0.0), alphas[j] + alphas[i] - C);
-					H = min(C , alphas[j] + alphas[i]);
-				}
-				if (L == H)
-				{
-					cout << "L = H = " <<L<< endl;
-					continue;
-				}
-				float eta = float(2.0)*mul_vv(dataMatIn[i], dataMatIn[j]) - mul_vv(dataMatIn[i], dataMatIn[i]) - mul_vv(dataMatIn[j], dataMatIn[j]);
-				if (eta >= 0)
-				{
-					cout << "eta>=0" << endl;
-					continue;
-				}
-				alphas[j] -= labelMat[j] * (Ei - Ej) / eta;
-				alphas[j] = clipAlpha(alphas[j], H, L);
-				if (abs(alphas[j]-alphaJold)<0.0001)
-				{
-					cout << "j not moving enough" << endl;
-					continue;
-				}
-				alphas[i] += labelMat[j] * labelMat[i] * (alphaJold - alphas[j]);
-				float b1 = b - Ei - labelMat[i] * (alphas[i] - alphaIold)*mul_vv(dataMatIn[i], dataMatIn[i]) - labelMat[j] * (alphas[j] - alphaJold)*mul_vv(dataMatIn[i], dataMatIn[j]);
-				float b2 = b - Ej - labelMat[i] * (alphas[i] - alphaIold)*mul_vv(dataMatIn[i], dataMatIn[j]) - labelMat[j] * (alphas[j] - alphaJold)*mul_vv(dataMatIn[j], dataMatIn[j]);
-				if ((0 < alphas[i]) && (C > alphas[i]))
-					b = b1;
-				else if ((0 < alphas[j]) && (C > alphas[j]))
-					b = b2;
-				else
-					b = (b1 + b2) / float(2.0);
-				alphaPairsChanged += 1;
-				cout << "iter: " << iter << " i: " << i << " pairs changed: " << alphaPairsChanged << endl;
-			}
-		}
-		if (alphaPairsChanged == 0)
-			iter += 1;
-		else
-			iter = 0;
-		cout << "iteration number : " << iter << endl;
-	}
-}
-
-float calcEk(optStruct oS, int k)
-{
-	vector<float> osk;
-	for (unsigned int i = 0; i < oS.K.size(); i++)
+	int j = i;
+	srand((unsigned)time(NULL));
+	while (j == i)
 	{
-		osk.push_back(oS.K[i][k]);
+		j = rand() % m;
 	}
-	float fXk = float(mul_vv(multiply_vv(oS.alphas, oS.labelMat),osk))+oS.b;
-	return fXk - float(oS.labelMat[k]);
+	return j;
 }
-
-vector<int> nonzero(vector<float> vec)
-{
-	vector<int>res;
-	vector<float>::iterator it = vec.begin();
-	int i = 0;
-	for (; it != vec.end(); it++,i++)
-	{
-		if (*it != 0)
-			res.push_back(i);
-	}
-	return res;
-}
-vector<int> nonzero(vector<float> vec,float l1,float l2)
-{
-	vector<int>res;
-	vector<float>::iterator it = vec.begin();
-	int i = 0;
-	for (; it != vec.end(); it++, i++)
-	{
-		if ((*it <l2)&&(*it>l1))
-			res.push_back(i);
-	}
-	return res;
-}
-void selectJ(int i, optStruct &oS, float Ei,int &j,float &Ej)
+void selectJ(int i, optStruct &oS, float Ei, int &j, float &Ej)
 {
 	int maxK = -1;
 	float maxDeltaE = 0;
 	Ej = 0;
-	oS.eCache[0][i] = 1;
-	oS.eCache[1][i] = Ei;
-	vector<int> validEcacheList = nonzero(oS.eCache[0]);
+	oS.eCache(0,i) = 1;
+	oS.eCache(1,i) = Ei;
+	vector<int> validEcacheList = nonzero(oS.eCache.row(0));
 	if (validEcacheList.size() > 1)
 	{
 
@@ -290,7 +166,7 @@ void selectJ(int i, optStruct &oS, float Ei,int &j,float &Ej)
 		{
 			if (*k == i)
 				continue;
-			float Ek = calcEk(oS,*k);
+			float Ek = calcEk(oS, *k);
 			float deltaE = abs(Ei - Ek);
 			if (deltaE > maxDeltaE)
 			{
@@ -303,16 +179,15 @@ void selectJ(int i, optStruct &oS, float Ei,int &j,float &Ej)
 	}
 	else
 	{
-		j =  selectJrand(i, oS.m);
+		j = selectJrand(i, oS.m);
 		Ej = calcEk(oS, j);
 	}
 	return;
 }
-
 void updateEk(optStruct &oS, int k)
 {
-	oS.eCache[0][k] = 1;
-	oS.eCache[1][k] = calcEk(oS,k);
+	oS.eCache(0,k) = 1;
+	oS.eCache(1,k) = calcEk(oS, k);
 }
 
 int innerL2(int i, optStruct &oS)
@@ -325,10 +200,11 @@ int innerL2(int i, optStruct &oS)
 		selectJ(i, oS, Ei, j, Ej);
 		float alphaIold = oS.alphas[i];
 		float alphaJold = oS.alphas[j];
-		float L=0;
-		float H=0;
+		float L = 0;
+		float H = 0;
 		if (oS.labelMat[i] != oS.labelMat[j])
 		{
+			
 			L = max(float(0), oS.alphas[j] - oS.alphas[i]);
 			H = min(oS.C, oS.C + oS.alphas[j] - oS.alphas[i]);
 		}
@@ -342,7 +218,7 @@ int innerL2(int i, optStruct &oS)
 			cout << "L==H" << endl;
 			return 0;
 		}
-		float eta = 2 * oS.K[i][j] - oS.K[i][i]-oS.K[j][j];
+		float eta = 2 * oS.K(i,j) - oS.K(i,i) - oS.K(j,j);
 		if (eta >= 0)
 		{
 			cout << "eta>=0" << endl;
@@ -358,8 +234,8 @@ int innerL2(int i, optStruct &oS)
 		}
 		oS.alphas[i] += oS.labelMat[j] * oS.labelMat[i] * (alphaJold - oS.alphas[j]);
 		updateEk(oS, i);
-		float b1 = oS.b - Ei - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*oS.K[i][i] - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*oS.K[i][j];
-		float b2 = oS.b - Ej - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*oS.K[i][j] - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*oS.K[j][j];
+		float b1 = oS.b - Ei - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*oS.K(i,i) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*oS.K(i,j);
+		float b2 = oS.b - Ej - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*oS.K(i,j) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*oS.K(j,j);
 		if ((0 < oS.alphas[i]) && (oS.C > oS.alphas[i]))
 			oS.b = b1;
 		else if ((0 < oS.alphas[j]) && (oS.C > oS.alphas[j]))
@@ -399,7 +275,7 @@ int innerL(int i, optStruct &oS)
 			cout << "L==H" << endl;
 			return 0;
 		}
-		float eta = 2 * mul_vv(oS.X[i], oS.X[j]) - mul_vv(oS.X[i], oS.X[i]) - mul_vv(oS.X[j], oS.X[j]);
+		float eta = 2 * oS.X.row(i).dot(oS.X.row(j)) - oS.X.row(i).dot(oS.X.row(i)) - oS.X.row(j).dot(oS.X.row(j));
 		if (eta >= 0)
 		{
 			cout << "eta>=0" << endl;
@@ -415,8 +291,8 @@ int innerL(int i, optStruct &oS)
 		}
 		oS.alphas[i] += oS.labelMat[j] * oS.labelMat[i] * (alphaJold - oS.alphas[j]);
 		updateEk(oS, i);
-		float b1 = oS.b - Ei - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*mul_vv(oS.X[i], oS.X[i]) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*mul_vv(oS.X[i], oS.X[j]);
-		float b2 = oS.b - Ej - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*mul_vv(oS.X[i], oS.X[j]) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*mul_vv(oS.X[j], oS.X[j]);
+		float b1 = oS.b - Ei - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*(oS.X.row(i).dot(oS.X.row(i))) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*(oS.X.row(i).dot(oS.X.row(j)));
+		float b2 = oS.b - Ej - oS.labelMat[i] * (oS.alphas[i] - alphaIold)*(oS.X.row(i).dot(oS.X.row(j))) - oS.labelMat[j] * (oS.alphas[j] - alphaJold)*(oS.X.row(j).dot(oS.X.row(j)));
 		if ((0 < oS.alphas[i]) && (oS.C > oS.alphas[i]))
 			oS.b = b1;
 		else if ((0 < oS.alphas[j]) && (oS.C > oS.alphas[j]))
@@ -427,18 +303,97 @@ int innerL(int i, optStruct &oS)
 	}
 	else
 		return 0;
+}
+void smoSimple(float C, float toler, float maxIter, float &b, VectorXf &alphas)
+{
+	int m = dataMat.size();
+	int n = dataMat[0].size();
+	MatrixXf dat_m(m, n);
+	VectorXf lab_v(m);
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			dat_m(i, j) = dataMat[i][j];
+		}
+		lab_v(i) = float(labelMat[i]);
+	}
+	int iter = 0;
+	while (iter < maxIter)
+	{	
+		int alphaPairsChanged = 0;
+		for (int i = 0; i < m; i++)
+		{
 
+			float fxi =  (alphas.cwiseProduct(lab_v)).dot((dat_m*(dat_m.row(i).transpose()))) + b;
+			float Ei = fxi - float(lab_v(i));
+			if (((lab_v[i] * Ei<-toler) && (alphas[i]<C)) || ((lab_v[i] * Ei>toler) && (alphas[i]>0)))
+			{
+				int j = selectJrand(i, m);
+				float fxj = (alphas.cwiseProduct(lab_v)).dot((dat_m*(dat_m.row(j).transpose()))) + b;
+				float Ej = fxj - float(lab_v[j]);
+				float alphaIold = alphas[i];
+				float alphaJold = alphas[j];
+				float L, H;
+				if (labelMat[i] != labelMat[j])
+				{
+					L = max(float(0.0), alphas[j] - alphas[i]);
+					H = min(C, C+alphas[j] - alphas[i]);
+				}
+				else
+				{
+					L = max(float(0.0), alphas[j] + alphas[i] - C);
+					H = min(C , alphas[j] + alphas[i]);
+				}
+				if (L == H)
+				{
+					cout << "L = H = " <<L<< endl;
+					continue;
+				}
+				float eta = float(2.0)*dat_m.row(i).dot( dat_m.row(j)) - dat_m.row(i).dot( dat_m.row(i)) -dat_m.row(j).dot( dat_m.row(j));
+				if (eta >= 0)
+				{
+					cout << "eta>=0" << endl;
+					continue;
+				}
+				alphas[j] -= lab_v[j] * (Ei - Ej) / eta;
+				alphas[j] = clipAlpha(alphas[j], H, L);
+				if (abs(alphas[j]-alphaJold)<0.0001)
+				{
+					cout << "j not moving enough" << endl;
+					continue;
+				}
+				alphas[i] += lab_v[j] * lab_v[i] * (alphaJold - alphas[j]);
+				float b1 = b - Ei - labelMat[i] * (alphas[i] - alphaIold)*(dat_m.row(i).dot(dat_m.row(i))) - labelMat[j] * (alphas[j] - alphaJold)*(dat_m.row(i).dot(dat_m.row(j)));
+				float b2 = b - Ej - labelMat[i] * (alphas[i] - alphaIold)*(dat_m.row(i).dot(dat_m.row(j))) - labelMat[j] * (alphas[j] - alphaJold)*(dat_m.row(j).dot(dat_m.row(j)));
+				if ((0 < alphas[i]) && (C > alphas[i]))
+					b = b1;
+				else if ((0 < alphas[j]) && (C > alphas[j]))
+					b = b2;
+				else
+					b = (b1 + b2) / float(2.0);
+				alphaPairsChanged += 1;
+				cout << "iter: " << iter << " i: " << i << " pairs changed: " << alphaPairsChanged << endl;
+			}
+		}
+		if (alphaPairsChanged == 0)
+			iter += 1;
+		else
+			iter = 0;
+		cout << "iteration number : " << iter << endl;
+	}
 }
 
-void smoP(vector<vector<float>>dataMatIn, vector<int>classLabels, float C, float toler, int maxIter, float &b, vector<float> &alphas,string kTup , float kTup_lev)
+
+void smoP(MatrixXf dataMatIn, VectorXf classLabels, float C, float toler, int maxIter, float &b, VectorXf &alphas, string kTup="lin", float kTup_lev=1.3)
 {
 
-	optStruct oS(dataMatIn,classLabels,C,toler,kTup,kTup_lev);
+	optStruct oS(dataMatIn, classLabels, C, toler, kTup, kTup_lev);
 	int iter = 0;
 	bool entireSet = true;
 	int alphaPairsChanged = 0;
-	while ((iter < maxIter)&&((alphaPairsChanged>0)||(entireSet)))
-	{	
+	while ((iter < maxIter) && ((alphaPairsChanged>0) || (entireSet)))
+	{
 		alphaPairsChanged = 0;
 		if (entireSet)
 		{
@@ -449,10 +404,10 @@ void smoP(vector<vector<float>>dataMatIn, vector<int>classLabels, float C, float
 			}
 			iter++;
 		}
-		
+
 		else
 		{
-			vector<int>nonBoundIs = nonzero(oS.alphas,0,C);
+			vector<int>nonBoundIs = nonzero(oS.alphas, 0, C);
 			vector<int>::iterator it = nonBoundIs.begin();
 			for (; it != nonBoundIs.end(); it++)
 			{
@@ -463,7 +418,7 @@ void smoP(vector<vector<float>>dataMatIn, vector<int>classLabels, float C, float
 		}
 		if (entireSet)
 			entireSet = false;
-		else 
+		else
 		{
 			if (alphaPairsChanged == 0)
 				entireSet = true;
@@ -474,70 +429,56 @@ void smoP(vector<vector<float>>dataMatIn, vector<int>classLabels, float C, float
 	alphas = oS.alphas;
 }
 
-vector<float> calcWs(vector<float>alphas, vector<vector<float>>dataArr, vector<int>classLabels)
+VectorXf calcWs(VectorXf alphas, MatrixXf dataArr, VectorXf classLabels)
 {
-	int m = dataArr.size();
-	int n = dataArr[0].size();
-	vector<float>w(n, 0);
+	int m = dataArr.rows();
+	int n = dataArr.cols();
+	VectorXf w = VectorXf::Zero(n);
 	for (int i = 0; i < m; i++)
 	{
-		w = add_vv(w, dataArr[i], alphas[i] * labelMat[i]);
+		w += dataArr.row(i)*(alphas[i] * classLabels[i]);
 	}
 	return w;
-}
-
-vector<float> kernelTrans(vector<vector<float>>X, vector<float>A, string kTup, float kTup_lev)
-{
-	int m = X.size();
-	int n = X[0].size();
-	vector<float>K(m, 0);
-	if (kTup == "lin")
-	{
-		K = multiply_mv(X, A);
-	}
-	else if (kTup == "rbf")
-	{
-		for (int j = 0; j < m; j++)
-		{
-			vector<float>deltaRow = sub_vv(X[j], A);
-			K[j] = mul_vv(deltaRow, deltaRow);
-		}
-		for (unsigned int j = 0; j < K.size(); j++)
-		{
-			K[j] = exp(K[j] / (-1 * kTup_lev *kTup_lev));
-		}
-	}
-	else
-	{
-		cout << "raise NameError('Houston we have a problem that kernal is not recognized')" << endl;
-	}
-	return K;
 }
 
 void testRbf(float k1 = 1.3)
 {
 	loadDataSet("testSetRBF.txt");
-	vector<float>alphas(dataMat.size(), 0);
-	float b = 0;
+	float b=0;
+	VectorXf alphas;	
+	alphas = VectorXf::Zero(labelMat.size()) ;
+	int m = dataMat.size();
+	int n = dataMat[0].size();
+	MatrixXf dat_m(m, n);
+	VectorXf lab_v(m);
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			dat_m(i, j) = dataMat[i][j];
+		}
+		lab_v(i) = float(labelMat[i]);
+	}
+	
 	//optStruct A(dataMat,labelMat,0.6,0.1);
 	//smoSimple(dataMat,labelMat,0.6, 0.001, 40, bb, alphas1);
-	smoP(dataMat, labelMat, float(200), float(0.0001),10000, b, alphas,"rbf",k1);
-	vector<int>svInd = nonzero(alphas,0,10000);
-	vector<vector<float>>sVs;
-	vector<float>labelSV;
-	vector<float>alphaSV;
+	smoP(dat_m, lab_v, float(200), float(0.0001), 10000, b, alphas, "rbf", k1);
+	vector<int>svInd = nonzero(alphas, 0, 10000);
+	MatrixXf sVs(svInd.size(),dat_m.cols());
+	VectorXf labelSV(svInd.size());
+	VectorXf alphaSV(svInd.size());
 	for (unsigned int i = 0; i < svInd.size(); i++)
 	{
-		sVs.push_back(dataMat[svInd[i]]);
-		labelSV.push_back(labelMat[svInd[i]]);
-		alphaSV.push_back(alphas[svInd[i]]);
+		sVs.row(i) = dat_m.row(svInd[i]);
+		labelSV[i] = labelMat[svInd[i]];
+		alphaSV[i] = alphas[svInd[i]];
 	}
-	cout << "there are " << sVs.size() << " support vectors"<<endl;
+	cout << "there are " << sVs.rows() << " support vectors" << endl;
 	int errorCount = 0;
 	for (unsigned int i = 0; i < dataMat.size(); i++)
 	{
-		vector<float>kernelEval = kernelTrans(sVs, dataMat[i], "rbf", k1);
-		float predict = mul_vv(kernelEval, multiply_vv(labelSV, alphaSV)) + b;
+		VectorXf kernelEval = kernelTrans(sVs, dat_m.row(i), "rbf", k1);
+		float predict = kernelEval.dot(labelSV.cwiseProduct(alphaSV)) + b;
 		if (predict*labelMat[i] < 0)
 		{
 			cout << "got wrong" << endl;
@@ -545,12 +486,24 @@ void testRbf(float k1 = 1.3)
 		}
 	}
 	cout << "training error rate is " << float(errorCount) / dataMat.size() << endl;
+	dataMat.clear();
+	labelMat.clear();
 	loadDataSet("testSetRBF2.txt");
+	m = dataMat.size();
+	n = dataMat[0].size();
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			dat_m(i, j) = dataMat[i][j];
+		}
+		lab_v(i) = float(labelMat[i]);
+	}
 	errorCount = 0;
 	for (unsigned int i = 0; i < dataMat.size(); i++)
 	{
-		vector<float>kernelEval = kernelTrans(sVs, dataMat[i], "rbf", k1);
-		float predict = mul_vv(kernelEval, multiply_vv(labelSV, alphaSV)) + b;
+		VectorXf kernelEval = kernelTrans(sVs, dat_m.row(i), "rbf", k1);
+		float predict = kernelEval.dot(labelSV.cwiseProduct(alphaSV)) + b;
 		if (predict*labelMat[i] < 0)
 		{
 			cout << "got wrong" << endl;
@@ -561,6 +514,7 @@ void testRbf(float k1 = 1.3)
 
 }
 
+
 vector<float>img2vector(string filename)
 {
 	ifstream in;
@@ -568,11 +522,11 @@ vector<float>img2vector(string filename)
 	int line = 0;
 	vector<float>back;
 	in.open(filename, ios::in);//ios::in 表示以只读的方式读取文件
-	while (getline(in, line_temp)&&line<32)
+	while (getline(in, line_temp) && line<32)
 	{
-		line++;	
-		for (int i = 0; i < 32;i++)
-			back.push_back(line_temp[i]-'0');
+		line++;
+		for (int i = 0; i < 32; i++)
+			back.push_back(line_temp[i] - '0');
 		in.get();
 	}
 	in.close();
@@ -594,8 +548,8 @@ void loadImages(vector<vector<float>>&trainImgMat, vector<int> &trainImglab, vec
 			{
 				imglist.push_back(fileinfo.name);
 			}
-			
-		} while (_findnext(hFile,&fileinfo)==0);
+
+		} while (_findnext(hFile, &fileinfo) == 0);
 		_findclose(hFile);
 	}
 	for (int i = 0; i < imglist.size(); i++)
@@ -603,6 +557,7 @@ void loadImages(vector<vector<float>>&trainImgMat, vector<int> &trainImglab, vec
 		trainImglab.push_back(atoi(imglist[i].substr(0, imglist[i].find_first_of('_')).c_str()));
 		trainImgMat.push_back(img2vector("trainingDigits//" + imglist[i]));
 	}
+
 	string testFileList = "testDigits";
 	hFile = 0;
 	vector<string>testlist;
@@ -635,25 +590,48 @@ void testDigits(float k1 = 10)
 	vector<vector<float>>testImgMat;
 	vector<int>testImglab;
 	loadImages(trainImgMat, trainImglab, testImgMat, testImglab);
-	vector<float>alphas(trainImgMat.size(), 0);
 	float b = 0;
-	smoP(trainImgMat, trainImglab, float(200), float(0.0001), 10000, b, alphas, "rbf", k1);
+	VectorXf alphas;
+	alphas = VectorXf::Zero(trainImgMat.size());
+	int m = trainImgMat.size();
+	int n = trainImgMat[0].size();
+	MatrixXf dat_m_train(m, n);
+	VectorXf lab_v_train(m);
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			dat_m_train(i, j) = trainImgMat[i][j];
+		}
+		lab_v_train(i) = float(trainImglab[i]);
+	}
+	MatrixXf dat_m_test(testImgMat.size(), testImgMat[0].size());
+	VectorXf lab_v_test(testImgMat.size());
+	for (int i = 0; i < testImgMat.size(); i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			dat_m_test(i, j) = testImgMat[i][j];
+		}
+		lab_v_test(i) = float(trainImglab[i]);
+	}
+	smoP(dat_m_train, lab_v_train, float(200), float(0.0001), 10000, b, alphas, "rbf", k1);
 	vector<int>svInd = nonzero(alphas, 0, 10000);
-	vector<vector<float>>sVs;
-	vector<float>labelSV;
-	vector<float>alphaSV;
+	MatrixXf sVs(svInd.size(), dat_m_train.cols());
+	VectorXf labelSV(svInd.size());
+	VectorXf alphaSV(svInd.size());
 	for (unsigned int i = 0; i < svInd.size(); i++)
 	{
-		sVs.push_back(trainImgMat[svInd[i]]);
-		labelSV.push_back(trainImglab[svInd[i]]);
-		alphaSV.push_back(alphas[svInd[i]]);
+		sVs.row(i) = dat_m_train.row(svInd[i]);
+		labelSV[i] = labelMat[svInd[i]];
+		alphaSV[i] = alphas[svInd[i]];
 	}
 	cout << "there are " << sVs.size() << " support vectors" << endl;
 	int errorCount = 0;
 	for (unsigned int i = 0; i < dataMat.size(); i++)
 	{
-		vector<float>kernelEval = kernelTrans(sVs, trainImgMat[i], "rbf", k1);
-		float predict = mul_vv(kernelEval, multiply_vv(labelSV, alphaSV)) + b;
+		VectorXf kernelEval = kernelTrans(sVs, dat_m_train.row(i), "rbf", k1);
+		float predict = kernelEval.dot(labelSV.cwiseProduct(alphaSV)) + b;
 		if (predict*trainImglab[i] < 0)
 		{
 			cout << "got wrong" << endl;
@@ -664,8 +642,8 @@ void testDigits(float k1 = 10)
 	errorCount = 0;
 	for (unsigned int i = 0; i <testImgMat.size(); i++)
 	{
-		vector<float>kernelEval = kernelTrans(sVs, testImgMat[i], "rbf", k1);
-		float predict = mul_vv(kernelEval, multiply_vv(labelSV, alphaSV)) + b;
+		VectorXf kernelEval = kernelTrans(sVs, dat_m_test.row(i), "rbf", k1);
+		float predict = kernelEval.dot(labelSV.cwiseProduct(alphaSV)) + b;
 		if (predict*testImglab[i] < 0)
 		{
 			cout << "got wrong" << endl;
@@ -679,8 +657,6 @@ void testDigits(float k1 = 10)
 void main()
 {
 	testDigits();
-	
-
 	cin.get();
 
 }
