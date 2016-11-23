@@ -1,6 +1,6 @@
 # SVM
 
-recode the python demo in <<machine learning in action>> with c++
+recode the python demo in 'machine learning in action' with c++
 
 ch06  SVM
 
